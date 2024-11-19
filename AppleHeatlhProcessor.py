@@ -564,7 +564,7 @@ def main():
 
     # File upload section
     st.sidebar.header("Data Upload")
-    file_type = st.sidebar.radio("Choose file type", ["XML", "CSV"])
+    file_type = st.sidebar.radio("Choose file type", ["XML", "CSV"], index=1)
 
     if file_type == "XML":
         uploaded_file = st.sidebar.file_uploader(
