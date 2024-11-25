@@ -38,7 +38,19 @@ class HealthDataProcessor:
     def load_csv_data(self, file):
         """Load CSV data and process it"""
         raw_df = pd.read_csv(file)
-        raw_df["StartDate"] = pd.to_datetime(raw_df["StartDate"], format="mixed")
+        try:
+            raw_df["StartDate"] = pd.to_datetime(raw_df["StartDate"], format="mixed")
+        except Exception as e:
+            print(f"Old format detected: {e}")
+            raw_df.rename(
+                columns={
+                    "start_data": "StartDate",
+                    "type": "RecordType",
+                    "value": "Value",
+                }
+            )
+            raw_df["StartDate"] = pd.to_datetime(raw_df["StartDate"], format="mixed")
+
         self._process_dataframe(raw_df)
 
     def _process_dataframe(self, df):
