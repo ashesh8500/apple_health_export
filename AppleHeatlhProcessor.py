@@ -17,20 +17,28 @@ class HealthDataProcessor:
 
     def load_xml_data(self, export_root):
         """Convert XML data to DataFrame and process it"""
-        data = []
-        for record in export_root.findall("Record"):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def process_record(record):
             record_type = record.get("type")
             start_date_str = record.get("startDate")
             value = record.get("value")
 
             if value is not None:
-                data.append(
-                    {
-                        "RecordType": record_type,
-                        "StartDate": pd.to_datetime(start_date_str, format="ISO8601"),
-                        "Value": value,
-                    }
-                )
+                return {
+                    "RecordType": record_type,
+                    "StartDate": pd.to_datetime(start_date_str, format="ISO8601"),
+                    "Value": value,
+                }
+            else:
+                return None
+
+        records = export_root.findall("Record")
+        with ThreadPoolExecutor() as executor:
+            data = list(executor.map(process_record, records))
+
+        # Filter out None results
+        data = [d for d in data if d is not None]
 
         raw_df = pd.DataFrame(data)
         self._process_dataframe(raw_df)
