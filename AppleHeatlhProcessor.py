@@ -42,12 +42,26 @@ class HealthDataProcessor:
             raw_df["StartDate"] = pd.to_datetime(raw_df["StartDate"], format="mixed")
         except Exception as e:
             print(f"Old format detected: {e}")
+            for col in raw_df.columns:
+                if "date" in col.lower():
+                    date_col = col
+                else:
+                    date_col = "start_date"
+                if "type" in col.lower():
+                    type_col = col
+                else:
+                    type_col = "record_type"
+                if "value" in col.lower():
+                    value_col = col
+                else:
+                    value_col = "value"
             raw_df.rename(
                 columns={
-                    "start_data": "StartDate",
-                    "type": "RecordType",
-                    "value": "Value",
-                }
+                    date_col: "StartDate",
+                    type_col: "RecordType",
+                    value_col: "Value",
+                },
+                inplace=True,
             )
             raw_df["StartDate"] = pd.to_datetime(raw_df["StartDate"], format="mixed")
 
