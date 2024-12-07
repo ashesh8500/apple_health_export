@@ -1,5 +1,5 @@
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -7,6 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from statsmodels.nonparametric.smoothers_lowess import lowess
+from scipy.signal import coherence, spectrogram
 
 
 class HealthDataProcessor:
@@ -14,6 +15,7 @@ class HealthDataProcessor:
         self.numeric_df = None
         self.categorical_df = None
         self.data_types = None
+        self.df = None  # Assuming df is initialized elsewhere
 
     def load_xml_data(self, export_root):
         """Convert XML data to DataFrame and process it"""
@@ -589,6 +591,126 @@ class HealthDataProcessor:
 
         return fig
 
+    def process_glucose_data(self, week1, week2, fs=1, nperseg=1440, noverlap=720):
+        """
+        Generate a coherence map comparing glucose data for two selected weeks.
+
+        Parameters:
+        - week1: First week selected (start and end dates as pd.Timestamp).
+        - week2: Second week selected (start and end dates as pd.Timestamp).
+        - fs: Sampling frequency (default: 1 sample/minute).
+        - nperseg: Number of samples per segment.
+        - noverlap: Overlap between segments.
+        """
+        if self.numeric_df is None:
+            st.error("Numeric data is not loaded.")
+            return None
+
+        glucose_record = "HKQuantityTypeIdentifierBloodGlucose"  # Adjust based on your column name
+        if glucose_record not in self.numeric_df.columns:
+            st.error(f"'{glucose_record}' column not found in numeric data.")
+            return None
+
+        # Handle timezone consistency
+        df_tz = self.numeric_df.index.tz
+        if df_tz is not None:
+            # DataFrame is timezone-aware
+            week1_start = pd.Timestamp(week1[0]).tz_localize(df_tz, ambiguous='NaT', nonexistent='NaT')
+            week1_end = pd.Timestamp(week1[1]).tz_localize(df_tz, ambiguous='NaT', nonexistent='NaT')
+            week2_start = pd.Timestamp(week2[0]).tz_localize(df_tz, ambiguous='NaT', nonexistent='NaT')
+            week2_end = pd.Timestamp(week2[1]).tz_localize(df_tz, ambiguous='NaT', nonexistent='NaT')
+        else:
+            # DataFrame is timezone-naive
+            week1_start = pd.Timestamp(week1[0])
+            week1_end = pd.Timestamp(week1[1])
+            week2_start = pd.Timestamp(week2[0])
+            week2_end = pd.Timestamp(week2[1])
+
+        # Filter data for the selected weeks
+        data_week1 = self.numeric_df.loc[week1_start:week1_end][glucose_record].values
+        data_week2 = self.numeric_df.loc[week2_start:week2_end][glucose_record].values
+
+        # Ensure equal lengths by truncating to the minimum length
+        min_length = min(len(data_week1), len(data_week2))
+        if min_length == 0:
+            st.error("No overlapping data in the selected weeks.")
+            return None
+
+        data_week1 = data_week1[:min_length]
+        data_week2 = data_week2[:min_length]
+        print(f"Data Length: {len(data_week1)}")
+        print(f"Data Length: {len(data_week2)}")
+        # Calculate coherence
+        f, Cxy = coherence(data_week1, data_week2, fs=fs, nperseg=nperseg, noverlap=noverlap)
+
+        # Plot coherence map using Plotly
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=f,
+            y=Cxy,
+            mode='lines',
+            name='Coherence'
+        ))
+        fig.add_trace(go.Scatter(
+            x=f,
+            y=Cxy,
+            fill='tozeroy',
+            mode='none',
+            fillcolor='rgba(0, 100, 80, 0.2)',
+            name='Coherence Area'
+        ))
+
+        fig.update_layout(
+            title="Coherence Between Two Weeks of Glucose Data",
+            xaxis_title="Frequency (Hz)",
+            yaxis_title="Coherence",
+            template="plotly_white",
+            hovermode="x"
+        )
+
+        return fig
+
+
+def plot_coherence_map(signal1, signal2, fs, nperseg, noverlap):
+    """
+    Plots a coherence map between two signals using Plotly.
+
+    Parameters:
+    - signal1: numpy array of the first signal.
+    - signal2: numpy array of the second signal.
+    - fs: Sampling frequency of the signals.
+    - nperseg: Length of each segment for the coherence calculation.
+    - noverlap: Overlap between segments for the coherence calculation.
+
+    Returns:
+    - fig: The Plotly Figure object containing the plot.
+    """
+    f, t, Sxx = spectrogram(signal1, fs, nperseg=nperseg, noverlap=noverlap)
+    coherence_values = np.zeros((len(f), len(t)))
+
+    for i in range(len(t)):
+        segment1 = signal1[i * (nperseg - noverlap): i * (nperseg - noverlap) + nperseg]
+        segment2 = signal2[i * (nperseg - noverlap): i * (nperseg - noverlap) + nperseg]
+        if len(segment1) == nperseg and len(segment2) == nperseg:
+            _, Cxy = coherence(segment1, segment2, fs, nperseg=nperseg)
+            coherence_values[:, i] = Cxy
+
+    fig = go.Figure(data=go.Heatmap(
+        x=t,
+        y=f,
+        z=coherence_values,
+        colorscale='Jet'
+    ))
+
+    fig.update_layout(
+        title='Coherence Map',
+        xaxis_title='Time [s]',
+        yaxis_title='Frequency [Hz]',
+        coloraxis_colorbar=dict(title='Coherence')
+    )
+
+    return fig
+
 
 def main():
     st.title("Apple Health Data Analyzer")
@@ -614,6 +736,12 @@ def main():
         )
         if uploaded_file is not None:
             processor.load_csv_data(uploaded_file)
+
+    # Button to use demo data
+    if st.sidebar.button("Use Demo Data"):
+        demo_file_path = "/Users/asheshkaji/Documents/University Files/Fall '24/cogs160/apple_health_export/2024-11.csv"
+        processor.load_csv_data(demo_file_path)
+
 
     if processor.numeric_df is not None or processor.categorical_df is not None:
         # Display date ranges
@@ -828,6 +956,57 @@ def main():
                     file_name="categorical_health_data.csv",
                     mime="text/csv",
                 )
+
+    # Glucose Coherence Analysis
+    st.header("Glucose Coherence Analysis")
+
+    selected_date1 = st.date_input("Select first date", value=datetime.today())
+    selected_date2 = st.date_input("Select second date", value=datetime.today())
+
+    if selected_date1 != selected_date2:
+        glucose_record = "HKQuantityTypeIdentifierBloodGlucose"  # Adjust based on actual record type
+        signal1 = processor.numeric_df[glucose_record][processor.numeric_df.index.date == selected_date1].values
+        signal2 = processor.numeric_df[glucose_record][processor.numeric_df.index.date == selected_date2].values
+        st.write(f"Signal 1 Length: {len(signal1)}, Signal 2 Length: {len(signal2)}")
+        
+        if len(signal1) > 0 and len(signal2) > 0:
+            fs = 1  # Adjust sampling frequency as needed
+            nperseg = 256
+            noverlap = 128
+
+            fig = plot_coherence_map(signal1, signal2, fs, nperseg, noverlap)
+            st.plotly_chart(fig)
+        else:
+            st.write("Insufficient data for selected dates.")
+    else:
+        st.write("Please select two different dates.")
+
+    # Glucose Coherence Analysis
+    st.header("Glucose Coherence Analysis Between Two Weeks")
+
+    # Select weeks
+    st.subheader("Select Two Weeks for Coherence Analysis")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        week1_start = st.date_input("Week 1 Start Date", value=datetime.today() - timedelta(days=14))
+        week1_end = week1_start + timedelta(days=6)
+
+    with col2:
+        week2_start = st.date_input("Week 2 Start Date", value=datetime.today() - timedelta(days=7))
+        week2_end = week2_start + timedelta(days=6)
+
+    if st.button("Generate Coherence Map"):
+        week1 = (week1_start, week1_end)
+        week2 = (week2_start, week2_end)
+
+        # Debugging: Display selected weeks
+        st.write(f"Week 1: {week1}")
+        st.write(f"Week 2: {week2}")
+
+        fig = processor.process_glucose_data(week1, week2, fs=1, nperseg=1440, noverlap=720)
+        if fig:
+            st.plotly_chart(fig)
 
 
 if __name__ == "__main__":
