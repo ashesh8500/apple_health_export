@@ -737,7 +737,7 @@ def main():
         if uploaded_file is not None:
             processor.load_csv_data(uploaded_file)
     else:
-        demo_file_path = "/Users/asheshkaji/Documents/University Files/Fall '24/cogs160/apple_health_export/2024-11.csv"
+        demo_file_path = "2024-11.csv"
         processor.load_csv_data(demo_file_path)
 
 
