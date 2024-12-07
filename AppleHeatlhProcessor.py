@@ -720,7 +720,7 @@ def main():
 
     # File upload section
     st.sidebar.header("Data Upload")
-    file_type = st.sidebar.radio("Choose file type", ["XML", "CSV"], index=1)
+    file_type = st.sidebar.radio("Choose file type", ["XML", "CSV", "Demo Data"], index=1)
 
     if file_type == "XML":
         uploaded_file = st.sidebar.file_uploader(
@@ -730,15 +730,13 @@ def main():
             export = ET.parse(uploaded_file)
             export_root = export.getroot()
             processor.load_xml_data(export_root)
-    else:
+    elif file_type == "CSV":
         uploaded_file = st.sidebar.file_uploader(
             "Upload Preprocessed Data (CSV)", type="csv"
         )
         if uploaded_file is not None:
             processor.load_csv_data(uploaded_file)
-
-    # Button to use demo data
-    if st.sidebar.button("Use Demo Data"):
+    else:
         demo_file_path = "/Users/asheshkaji/Documents/University Files/Fall '24/cogs160/apple_health_export/2024-11.csv"
         processor.load_csv_data(demo_file_path)
 
